@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Microatividade 3 - Frontend JWT</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        button { margin: 5px; padding: 10px; }
+        pre { background-color: #f4f4f4; padding: 10px; border: 1px solid #ccc; white-space: pre-wrap; word-wrap: break-word; }
+        .error { color: red; font-weight: bold; }
+        .success { color: green; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<h1>Microatividade 3 - Frontend JWT</h1>
+
+<p>Este frontend demonstra a validação de expiração de JWT antes de realizar uma requisição para um backend protegido.</p>
+
+<div>
+    <h2>Simulação de Login</h2>
+    <label for="username">Usuário:</label>
+    <input type="text" id="username" value="user"><br>
+    <label for="password">Senha:</label>
+    <input type="password" id="password" value="password123"><br>
+    <button onclick="login()">Login</button>
+    <p><i>(Use user/password123 para simular sucesso)</i></p>
+    <div id="login-status"></div>
+</div>
+
+<hr>
+
+<div>
+    <h2>Ação Protegida</h2>
+    <button onclick="doAction()">Executar Ação Protegida</button>
+    <div id="action-status"></div>
+</div>
+
+<hr>
+
+<div>
+    <h2>Token Armazenado (localStorage)</h2>
+    <pre id="token-display">Nenhum token armazenado.</pre>
+    <button onclick="clearToken()">Limpar Token</button>
+</div>
+
+<script>
+    const BACKEND_URL = "http://localhost:3001"; // Ajuste se o backend estiver rodando em outra URL/porta
+    const TOKEN_KEY = "jwt_token";
+    const EXPIRATION_KEY = "jwt_expiration";
+
+    // Função para atualizar a exibição do token
+    function displayTokenInfo() {
+        const token = localStorage.getItem(TOKEN_KEY);
+        const expiration = localStorage.getItem(EXPIRATION_KEY);
+        const display = document.getElementById("token-display");
+        if (token && expiration) {
+            const expirationDate = new Date(parseInt(expiration));
+            const now = new Date();
+            const isExpired = now > expirationDate;
+            display.textContent = `Token: ${token}\nExpira em: ${expirationDate.toLocaleString()}\nExpirado: ${isExpired ? 'Sim' : 'Não'}`;
+        } else {
+            display.textContent = "Nenhum token armazenado.";
+        }
+    }
+
+    // Função para limpar o token do localStorage
+    function clearToken() {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(EXPIRATION_KEY);
+        document.getElementById("login-status").textContent = "Token limpo.";
+        document.getElementById("action-status").textContent = "";
+        displayTokenInfo();
+    }
+
+    // Função para verificar se o token está válido (existe e não expirou)
+    function isTokenValid() {
+        const token = localStorage.getItem(TOKEN_KEY);
+        const expiration = localStorage.getItem(EXPIRATION_KEY);
+
+        if (!token || !expiration) {
+            return false; // Não há token ou expiração
+        }
+
+        const expirationDate = new Date(parseInt(expiration));
+        const now = new Date();
+
+        if (now >= expirationDate) {
+            console.log("Token expirado em:", expirationDate);
+            return false; // Token expirou
+        }
+
+        return true; // Token existe e é válido
+    }
+
+    // Função de Login
+    async function login() {
+        const username = document.getElementById("username").value;
+        const password = document.getElementById("password").value;
+        const statusDiv = document.getElementById("login-status");
+        statusDiv.textContent = "Tentando fazer login...";
+        statusDiv.className = "";
+
+        try {
+            const response = await fetch(`${BACKEND_URL}/api/auth`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                localStorage.setItem(TOKEN_KEY, data.jwt_token);
+                localStorage.setItem(EXPIRATION_KEY, data.expiresAt); // Armazena o timestamp de expiração
+                statusDiv.textContent = "Login bem-sucedido! Token armazenado.";
+                statusDiv.className = "success";
+                displayTokenInfo();
+            } else {
+                statusDiv.textContent = `Falha no login: ${data.message}`;
+                statusDiv.className = "error";
+                clearToken(); // Limpa token antigo se o login falhar
+            }
+        } catch (error) {
+            console.error("Erro no login:", error);
+            statusDiv.textContent = `Erro ao conectar ao backend: ${error.message}`;
+            statusDiv.className = "error";
+            clearToken();
+        }
+    }
+
+    // Função para executar a ação protegida
+    async function doAction() {
+        const statusDiv = document.getElementById("action-status");
+        statusDiv.textContent = "Verificando token...";
+        statusDiv.className = "";
+
+        // 1. Validar se o token existe e não expirou ANTES de fazer a requisição
+        if (!isTokenValid()) {
+            statusDiv.textContent = "Token inválido ou expirado. Faça login novamente.";
+            statusDiv.className = "error";
+            // Poderia redirecionar para login: window.location.href = '/login.html';
+            return; // Interrompe a execução
+        }
+
+        // 2. Se o token é válido, prosseguir com a requisição
+        const token = localStorage.getItem(TOKEN_KEY);
+        statusDiv.textContent = "Token válido. Enviando requisição para ação protegida...";
+
+        try {
+            const response = await fetch(`${BACKEND_URL}/api/do_SomeAction`, {
+                method: "POST", // Assumindo POST como no exemplo original
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}` // Envia o token no cabeçalho
+                },
+                body: JSON.stringify({}) // Corpo vazio ou com dados necessários para a ação
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                statusDiv.textContent = `Sucesso: ${data.message}`;
+                statusDiv.className = "success";
+            } else {
+                // O backend também valida, pode retornar erro se algo deu errado lá
+                statusDiv.textContent = `Erro do backend: ${data.message}`;
+                statusDiv.className = "error";
+                // Se o erro for de token expirado vindo do backend (embora já validamos), limpar o token local
+                if (response.status === 401) {
+                    clearToken();
+                }
+            }
+        } catch (error) {
+            console.error("Erro ao executar ação:", error);
+            statusDiv.textContent = `Erro ao conectar ao backend: ${error.message}`;
+            statusDiv.className = "error";
+        }
+    }
+
+    // Exibir info do token ao carregar a página
+    document.addEventListener("DOMContentLoaded", displayTokenInfo);
+
+</script>
+
+</body>
+</html>
+
